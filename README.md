@@ -2,11 +2,16 @@
 
 Quantitative measures of -- 
 
-Germinal Center area\n
-Follicle Area
-Mantle zone width
-Mantle zone area
-#GCs/area
+Germinal Center area 
+
+Follicle Area 
+
+Mantle zone width 
+
+Mantle zone area 
+
+#GCs/area 
+
 
 iMCD, n = 20 
 Sentinel, n = 8
