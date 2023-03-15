@@ -1,0 +1,1287 @@
+---
+title: "Quantitative Lymph Node Analysis"
+output: html_notebook
+---
+
+
+```{r}
+library(readxl)
+library(dplyr)
+library(lme4)
+library(ggplot2)
+library(Hmisc)
+library(pheatmap)
+library(stats)
+library(weights)
+library(RColorBrewer)
+library(gplots)
+library(ggfortify)
+library(heatmap3)
+library(ggpubr)
+
+ln.features<-read_excel("/Volumes/Fajgenbaum/Pathology Slides/Castleman Features Project/Final Data Analysis/For_analysis.xlsx",sheet="Analysis1")
+ln.area<-read_excel("/Volumes/Fajgenbaum/Pathology Slides/Castleman Features Project/Final Data Analysis/For_analysis.xlsx",sheet="Analysis2")
+```
+
+
+```{r}
+#Add in an overall iMCD subtype
+ln.features.a<-ln.features%>%
+  mutate(Subtype.1=ifelse(Subtype %in% "Sentinel","Sentinel","iMCD"))
+ln.area.a<-ln.area%>%
+  mutate(Subtype.1=ifelse(Subtype %in% "Sentinel","Sentinel","iMCD"))
+
+#Remove budding for now
+ln.features<-ln.features.a%>%
+  filter(is.na(Budding))
+ln.features%>%group_by(Subtype)%>%summarise(n=n())
+#N samples
+ln.area.a%>%
+  group_by(Subtype)%>%
+  dplyr::summarise(n=n())%>%
+  mutate(freq = (n / sum(n))*100)
+
+ln.area.a%>%
+  group_by(Subtype.1)%>%
+  dplyr::summarise(n=n())%>%
+  mutate(freq = (n / sum(n))*100)
+
+ln.area.a%>%
+  group_by(Histopath)%>%
+  dplyr::summarise(n=n())%>%
+  mutate(freq = (n / sum(n))*100)
+
+ln.area.a%>%
+  group_by(Subtype,Histopath)%>%
+  dplyr::summarise(n=n())%>%
+  mutate(freq = (n / sum(n))*100)
+
+ln.area.a%>%
+  group_by(Subtype.1,Histopath)%>%
+  dplyr::summarise(n=n())%>%
+  mutate(freq = (n / sum(n))*100)
+```
+
+
+```{r}
+#####
+#Assess iMCD vs Sentinel
+#Assess Normality
+#Degree of regressed germinal centers in iMCD
+attach(ln.features)
+hist(log10(GC_area[Subtype.1%in%"iMCD"]))
+hist(log10(Follicle_area[Subtype.1%in%"iMCD"]))
+hist(log10(MZ_width[Subtype.1%in%"iMCD"]))
+hist(log10(MZ_area[Subtype.1%in%"iMCD"]))
+
+hist(log10(GC_area[Subtype.1%in%"Sentinel"]))
+hist(log10(Follicle_area[Subtype.1%in%"Sentinel"]))
+hist(log10(MZ_width[Subtype.1%in%"Sentinel"]))
+hist(log10(MZ_area[Subtype.1%in%"Sentinel"]))
+
+shapiro.test(log10(GC_area[Subtype.1%in%"Sentinel"]))
+shapiro.test(log10(Follicle_area[Subtype.1%in%"Sentinel"]))
+shapiro.test(log10(MZ_width[Subtype.1%in%"Sentinel"]))
+shapiro.test(log10(MZ_area[Subtype.1%in%"Sentinel"]))
+
+detach(ln.features)
+
+raw.stats<-function(df,y,x){
+  df%>%
+    group_by({{y}})%>%
+    summarise(med=median({{x}},na.rm=TRUE),iqr=IQR({{x}},na.rm=TRUE),
+              min=min({{x}},na.rm=TRUE),max=max({{x}},na.rm=TRUE),
+              mean=mean({{x}},na.rm=TRUE),sd=sd({{x}},na.rm=TRUE))
+}
+```
+
+
+```{r}
+#iMCD vs Sentinel
+gc<-raw.stats(ln.features,Subtype.1,GC_area)
+gc
+foll<-raw.stats(ln.features,Subtype.1,Follicle_area)
+foll
+mz_width<-raw.stats(ln.features,Subtype.1,MZ_width)
+mz_width
+mz_area<-raw.stats(ln.features,Subtype.1,MZ_area)
+mz_area
+```
+
+
+```{r}
+#take log10 of all of the features
+ln.features.1<-ln.features%>%
+  mutate(GC_area=log10(GC_area))%>%
+  mutate(Follicle_area=log10(Follicle_area))%>%
+  mutate(MZ_width=log10(MZ_width))%>%
+  mutate(MZ_area=log10(MZ_area))
+
+
+#Log10 transformed values
+gc<-raw.stats(ln.features.1,Subtype.1,GC_area)
+gc
+foll<-raw.stats(ln.features.1,Subtype.1,Follicle_area)
+foll
+mz_width<-raw.stats(ln.features.1,Subtype.1,MZ_width)
+mz_width
+mz_area<-raw.stats(ln.features.1,Subtype.1,MZ_area)
+mz_area
+```
+
+
+```{r}
+#iMCD VS SENTINEL
+#GC AREA
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (GC_area[Subtype.1%in%"Sentinel"]),
+  y = (GC_area[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features.1)
+# noevidence for unequal variance, use var.equal=FALSE for all groups
+t.test((GC_area)~Subtype.1,var.equal=TRUE,data=ln.features.1)
+```
+
+
+```{r}
+#FOLLICLE AREA
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (Follicle_area[Subtype.1%in%"Sentinel"]),
+  y = (Follicle_area[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features.1)
+# Evidence for unequal variance, use var.equal=FALSE for all groups
+t.test((Follicle_area)~Subtype.1,var.equal=FALSE,data=ln.features.1)
+```
+
+
+```{r}
+#MZ WIDTH
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (MZ_width[Subtype.1%in%"Sentinel"]),
+  y = (MZ_width[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features.1)
+# Evidence for unequal variance, use var.equal=FALSE for all groups
+t.test((MZ_width)~Subtype.1,var.equal=FALSE,data=ln.features.1)
+```
+
+
+```{r}
+#MZ AREA
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (MZ_area[Subtype.1%in%"Sentinel"]),
+  y = (MZ_area[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features.1)
+# Evidence for unequal variance, use var.equal=FALSE for all groups
+t.test((MZ_area)~Subtype.1,var.equal=FALSE,data=ln.features.1)
+```
+
+maybe try your own here... 
+```{r}
+#####
+#Figures
+figures<-left_join(ln.features.1,ln.area[,c(1,6:11)], by="PatientID")
+
+#Germinal centers
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone width
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone area
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle size
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+```{r}
+figures$GC_arealog10 <- log10(figures$GC_area)
+figures$MZ_widthlog10 <- log10(figures$MZ_width)
+figures$MZ_arealog10 <- log10(figures$MZ_area)
+figures$Folliclearealog10 <- log10(figures$Follicle_area)
+```
+
+
+
+
+
+```{r}
+ggviolin(figures, x = "Subtype.1", y="MZ_area", fill = "Subtype.1", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(method = "t.test", label = "p.format", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+
+ggviolin(figures, x = "Subtype.1", y="MZ_width", fill = "Subtype.1", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(method = "t.test", label = "p.format", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+
+ggviolin(figures, x = "Subtype.1", y="GC_area", fill = "Subtype.1", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(method = "t.test", label = "p.format", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = TRUE))
+
+ggviolin(figures, x = "Subtype.1", y="Follicle_area", fill = "Subtype.1", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(method = "t.test", label = "p.format", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+```
+
+```{r}
+####
+#Number of germinal centers per area
+
+n_gcs<-ln.features%>%
+  group_by(PatientID)%>%
+  summarise(n=n())
+
+#Merge with ln_area
+ln.area.1<-left_join(ln.area,n_gcs,by="PatientID")
+```
+
+
+```{r}
+#Calculate gc per area
+ln.area.2<-ln.area.1%>%
+  mutate(gc_per=n/log10(positive))
+```
+
+depr_df %>%
+  mutate(Status = case_when(
+    endsWith(ID, "R") ~ "Recovered",
+    endsWith(ID, "S") ~ "Sick"
+    ))
+    
+```{r}
+by.group.subtype <- ln.area.2 %>% mutate(Subtype.1 = case_when(Subtype == "iMCD-NOS" ~ "iMCD", Subtype == "iMCD-TAFRO" ~ "iMCD", Subtype == "Sentinel" ~ "Sentinel"))
+```
+
+```{r}
+ggviolin(by.group.subtype, x = "Subtype.1", y="gc_per", fill = "Subtype.1", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(method = "t.test", label = "p.format", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+```
+
+```{r}
+ln.area.3 <- ln.area.2 %>% mutate(Histopath2 = case_when(Histopath == "NA" ~ "Sentinel", Histopath == "Plasmacytic" ~ "Plasmacytic", Histopath == "Hypervascular" ~ "Hypervascular", Histopath == "Mixed" ~ "Mixed"))
+```
+
+```{r}
+ggboxplot(ln.area.3, x = "Histopath2", y="gc_per", fill = "Histopath2", add = "jitter") + stat_compare_means(comparisons = my_comparisons, label = "p.signif", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+```
+
+
+```{r}
+#####
+#Linear regression -  for histopath
+#Change reference group
+forlm<-figures%>%
+  mutate(Histopath=factor(Histopath, levels=c("NA","Hypervascular","Mixed","Plasmacytic")))
+
+#Use linear regressions with weights: iMCD vs Sentinel
+summary(lm(GC_area~Histopath,data=forlm))
+summary(lm(Follicle_area~Histopath,data=forlm))
+summary(lm(MZ_width~Histopath,data=forlm))
+summary(lm(MZ_area~Histopath,data=forlm))
+```
+
+```{r}
+my_comparisons <- list(c("Plasmacytic", "Sentinel"), c("Hypervascular", "Sentinel"), c("Mixed", "Sentinel"))
+```
+
+
+```{r}
+ggviolin(forlm, x = "Histopath", y="MZ_area", fill = "Histopath", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(comparisons = my_comparisons, label = "p.signif", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+```
+
+
+
+
+
+
+```{r}
+#####
+#Linear regression -  for imcd and histopath
+#Change reference group
+forlm2<-figures%>%
+  filter(!Subtype %in% "Sentinel")%>%
+  mutate(Histopath=factor(Histopath, levels=c("Hypervascular","Mixed","Plasmacytic")))%>%
+  mutate(Subtype=factor(Subtype,levels=c("iMCD-NOS","iMCD-TAFRO")))
+
+#Use linear regressions with weights: iMCD vs Sentinel
+summary(lm(GC_area~Histopath*Subtype,data=forlm2))
+anova(lm(GC_area~Histopath*Subtype,data=forlm2))
+
+summary(lm(Follicle_area~Histopath*Subtype,data=forlm2))
+anova(lm(Follicle_area~Histopath*Subtype,data=forlm2))
+
+summary(lm(MZ_width~Histopath*Subtype,data=forlm2))
+anova(lm(MZ_width~Histopath*Subtype,data=forlm2))
+
+summary(lm(MZ_area~Histopath*Subtype,data=forlm2))
+anova(lm(MZ_area~Histopath*Subtype,data=forlm2))
+```
+
+
+```{r}
+#Interaction plots
+forplot<-forlm2%>%
+  group_by(Subtype,Histopath)%>%
+  summarise(n=n(),gc=mean(GC_area,na.rm=TRUE),fo=mean(Follicle_area,na.rm=TRUE),mzw=mean(MZ_width,na.rm=TRUE),mza=mean(MZ_area,na.rm=TRUE))
+  #summarise(n=n(),gc=mean(GC_area,na.rm=TRUE),gc.sd=sd(GC_area,na.rm=TRUE))%>%
+ # mutate(selow=gc.sd/n)%>%
+#  mutate(sehigh=gc.sd/n)
+```
+
+
+```{r}
+#Germinal center
+ggplot(data=forplot, aes(x=Subtype, y=gc, group=Histopath))+
+  geom_line(size=1, aes(color=Histopath))+ #Can adjust the thickness of your lines
+  geom_point(aes(colour = Histopath), size=2)+ #Can adjust the size of your points
+ # geom_errorbar(aes(ymin=gc-selow, ymax=gc+sehigh),width=.4)+ #Can adjust your error bars
+#  ylim(0,4)+ #Puts a limit on the y-axis
+  ylab("GC area")+ #Adds a label to the y-axis
+  xlab("Subtype")+ #Adds a label to the x-axis
+  theme_bw()+ #Removes the gray background 
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),legend.position="bottom",
+        legend.key = element_blank())+ #Removes the lines 
+  scale_fill_grey()
+```
+
+
+```{r}
+#Follicle
+ggplot(data=forplot, aes(x=Subtype, y=fo, group=Histopath))+
+  geom_line(size=1, aes(color=Histopath))+ #Can adjust the thickness of your lines
+  geom_point(aes(colour = Histopath), size=2)+ #Can adjust the size of your points
+  # geom_errorbar(aes(ymin=gc-selow, ymax=gc+sehigh),width=.4)+ #Can adjust your error bars
+  #  ylim(0,4)+ #Puts a limit on the y-axis
+  ylab("Follicle area")+ #Adds a label to the y-axis
+  xlab("Subtype")+ #Adds a label to the x-axis
+  theme_bw()+ #Removes the gray background 
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),legend.position="bottom",
+        legend.key = element_blank())+ #Removes the lines 
+  scale_fill_grey()
+```
+
+
+```{r}
+#MZ width
+ggplot(data=forplot, aes(x=Subtype, y=mzw, group=Histopath))+
+  geom_line(size=1, aes(color=Histopath))+ #Can adjust the thickness of your lines
+  geom_point(aes(colour = Histopath), size=2)+ #Can adjust the size of your points
+  # geom_errorbar(aes(ymin=gc-selow, ymax=gc+sehigh),width=.4)+ #Can adjust your error bars
+  #  ylim(0,4)+ #Puts a limit on the y-axis
+  ylab("MZ width")+ #Adds a label to the y-axis
+  xlab("Subtype")+ #Adds a label to the x-axis
+  theme_bw()+ #Removes the gray background 
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),legend.position="bottom",
+        legend.key = element_blank())+ #Removes the lines 
+  scale_fill_grey()
+```
+
+
+```{r}
+#MZ area
+ggplot(data=forplot, aes(x=Subtype, y=mza, group=Histopath))+
+  geom_line(size=1, aes(color=Histopath))+ #Can adjust the thickness of your lines
+  geom_point(aes(colour = Histopath), size=2)+ #Can adjust the size of your points
+  # geom_errorbar(aes(ymin=gc-selow, ymax=gc+sehigh),width=.4)+ #Can adjust your error bars
+  #  ylim(0,4)+ #Puts a limit on the y-axis
+  ylab("MZ area")+ #Adds a label to the y-axis
+  xlab("Subtype")+ #Adds a label to the x-axis
+  theme_bw()+ #Removes the gray background 
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),legend.position="bottom",
+        legend.key = element_blank())+ #Removes the lines 
+  scale_fill_grey()
+
+ggplot(forlm2, aes(x=Subtype, y=GC_area, fill=Histopath)) + 
+  geom_boxplot() +
+  facet_wrap(~Histopath)+
+  theme(axis.text.x = element_text(size=8))
+ggplot(forlm2, aes(x=Subtype, y=Follicle_area, fill=Histopath)) + 
+  geom_boxplot() +
+  facet_wrap(~Histopath)+
+  theme(axis.text.x = element_text(size=8))
+ggplot(forlm2, aes(x=Subtype, y=MZ_width, fill=Histopath)) + 
+  geom_boxplot() +
+  facet_wrap(~Histopath)+
+  theme(axis.text.x = element_text(size=8))
+ggplot(forlm2, aes(x=Subtype, y=MZ_area, fill=Histopath)) + 
+  geom_boxplot() +
+  facet_wrap(~Histopath)+
+  theme(axis.text.x = element_text(size=8))
+```
+
+
+```{r}
+####
+#Number of germinal centers per area
+
+n_gcs<-ln.features%>%
+  group_by(PatientID)%>%
+  summarise(n=n())
+
+#Merge with ln_area
+ln.area.1<-left_join(ln.area,n_gcs,by="PatientID")
+
+#Calculate gc per area
+ln.area.2<-ln.area.1%>%
+  mutate(gc_per=n/log10(positive))%>%
+  filter(!Subtype %in% "Sentinel")%>%
+  mutate(Histopath=factor(Histopath, levels=c("Hypervascular","Mixed","Plasmacytic")))%>%
+  mutate(Subtype=factor(Subtype,levels=c("iMCD-NOS","iMCD-TAFRO")))
+
+by.group<-ln.area.2%>%
+  group_by(Subtype,Histopath)%>%
+  summarise(mean=mean(gc_per,na.rm=TRUE),SD=sd(gc_per,na.rm=TRUE),min=min(gc_per,na.rm=TRUE),max=max(gc_per,na.rm=TRUE))
+
+summary(lm(gc_per~Histopath*Subtype,data=ln.area.2))
+anova(lm(gc_per~Histopath*Subtype,data=ln.area.2))
+
+ggplot(data=by.group, aes(x=Subtype, y=mean, group=Histopath))+
+  geom_line(size=1, aes(color=Histopath))+ #Can adjust the thickness of your lines
+  geom_point(aes(colour = Histopath), size=2)+ #Can adjust the size of your points
+  # geom_errorbar(aes(ymin=gc-selow, ymax=gc+sehigh),width=.4)+ #Can adjust your error bars
+  #  ylim(0,4)+ #Puts a limit on the y-axis
+  ylab("GC/area")+ #Adds a label to the y-axis
+  xlab("Subtype")+ #Adds a label to the x-axis
+  theme_bw()+ #Removes the gray background 
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),legend.position="bottom",
+        legend.key = element_blank())+ #Removes the lines 
+  scale_fill_grey()
+
+ggplot(ln.area.2, aes(x=Subtype, y=gc_per, fill=Histopath)) + 
+  geom_boxplot() +
+  facet_wrap(~Histopath)+
+  theme(axis.text.x = element_text(size=8))
+```
+
+
+```{r}
+#Heatmap of all data
+#Ordered by GC
+order<-ln.features%>%
+  arrange(desc(GC_area))
+matrix<-as.matrix(order[,c(4:7)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Subtype))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#####
+#Analysis by patient
+#Make a dataframe of averages and weights
+by.pt<-ln.features%>%
+  group_by(PatientID)%>%
+  summarise(n=n(),GC_area=mean(GC_area,na.rm=TRUE),Follicle_area=mean(Follicle_area,na.rm=TRUE),
+            MZ_width=mean(MZ_width,na.rm=TRUE),MZ_area=mean(MZ_area,na.rm=TRUE))
+
+#Add in the subtypes
+by.pt.1<-left_join(by.pt,ln.area.a[c(1,2,6,12)])
+```
+
+
+```{r}
+#Possible figures
+#heatmap using the original averages
+
+#Dendrogram and automatic order
+matrix<-as.matrix(by.pt.1[,c(3:6)])
+
+rownames(matrix)<-by.pt.1$PatientID
+my_group<-as.numeric(as.factor(by.pt.1$Subtype))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,RowSideColors=colSide)
+```
+
+
+```{r}
+#Ordered by GC
+order<-by.pt.1%>%
+  arrange(desc(GC_area))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Subtype))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#Ordered by Follicle
+order<-by.pt.1%>%
+  arrange(desc(Follicle_area))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Subtype))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#Ordered by GC
+order<-by.pt.1%>%
+  arrange(desc(MZ_width))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Subtype))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#Ordered by GC
+order<-by.pt.1%>%
+  arrange(desc(MZ_area))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Subtype))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#Legend for side colors
+showLegend(legend=c("Sentinel","iMCD-TAFRO","iMCD-NOS"),col=c("#7570B3","#D95F02","#1B9E77"),lwd=10)
+
+
+#HM3 version
+heatmap3(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1,legendfun=function()
+showLegend(legend=c("Sentinel","iMCD-TAFRO","iMCD-NOS"),col=c("#7570B3","#D95F02","#1B9E77")))
+```
+
+
+```{r}
+#Heatmaps By histopath subtype
+#GC
+order<-by.pt.1%>%
+  filter(!Subtype %in% "Sentinel")%>%
+  arrange(desc(GC_area))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Histopath))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#Follicle
+order<-by.pt.1%>%
+  filter(!Subtype %in% "Sentinel")%>%
+  arrange(desc(Follicle_area))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Histopath))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#MZ width
+order<-by.pt.1%>%
+  filter(!Subtype %in% "Sentinel")%>%
+  arrange(desc(MZ_width))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Histopath))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+#MZ area
+order<-by.pt.1%>%
+  filter(!Subtype %in% "Sentinel")%>%
+  arrange(desc(MZ_area))
+matrix<-as.matrix(order[,c(3:6)])
+rownames(matrix)<-order$PatientID
+my_group<-as.numeric(as.factor(order$Histopath))
+colSide<-brewer.pal(3,"Dark2")[my_group]
+
+heatmap(matrix, scale="column",Colv=NA,Rowv=NA,RowSideColors=colSide,cexCol = 1)
+```
+
+
+```{r}
+showLegend(legend=c("Plasmacytic","Mixed","Hypervascular"),col=c("#7570B3","#D95F02","#1B9E77"),lwd=10)
+
+#Scatter plot ot show individual effect by group
+#Tafro
+tafro<-ln.features.1%>%filter(Subtype %in% "iMCD-TAFRO")
+
+pilots.pca <- prcomp(tafro[,4:7])
+summary(pilots.pca)
+pca.plot <- autoplot(pilots.pca, data = tafro, colour = 'PatientID')
+pca.plot
+
+ggplot(tafro, aes(x=PatientID, y=GC_area), color=PatientID) +
+  geom_point()
+ggplot(tafro, aes(x=PatientID, y=Follicle_area), color=PatientID) +
+  geom_point()
+ggplot(tafro, aes(x=PatientID, y=MZ_width), color=PatientID) +
+  geom_point()
+ggplot(tafro, aes(x=PatientID, y=MZ_area), color=PatientID) +
+  geom_point()
+```
+
+
+```{r}
+#NOS
+nos<-ln.features.1%>%filter(Subtype %in% "iMCD-NOS")
+
+pilots.pca <- prcomp(nos[,4:7])
+summary(pilots.pca)
+pca.plot <- autoplot(pilots.pca, data = nos, colour = 'PatientID')
+pca.plot
+
+ggplot(nos, aes(x=PatientID, y=GC_area), color=PatientID) +
+  geom_point()
+ggplot(nos, aes(x=PatientID, y=Follicle_area), color=PatientID) +
+  geom_point()
+ggplot(nos, aes(x=PatientID, y=MZ_width), color=PatientID) +
+  geom_point()
+ggplot(nos, aes(x=PatientID, y=MZ_area), color=PatientID) +
+  geom_point()
+```
+
+
+```{r}
+#Sentinel
+sent<-ln.features.1%>%filter(Subtype %in% "Sentinel")
+
+pilots.pca <- prcomp(sent[,4:7])
+summary(pilots.pca)
+pca.plot <- autoplot(pilots.pca, data = sent, colour = 'PatientID')
+pca.plot
+
+ggplot(sent, aes(x=PatientID, y=GC_area), color=PatientID) +
+  geom_point()
+ggplot(sent, aes(x=PatientID, y=Follicle_area), color=PatientID) +
+  geom_point()
+ggplot(sent, aes(x=PatientID, y=MZ_width), color=PatientID) +
+  geom_point()
+ggplot(sent, aes(x=PatientID, y=MZ_area), color=PatientID) +
+  geom_point()
+```
+
+
+```{r}
+#iMCD
+imcd<-ln.features.1%>%filter(Subtype.1 %in% "iMCD")
+
+pilots.pca <- prcomp(imcd[,4:7])
+summary(pilots.pca)
+pca.plot <- autoplot(pilots.pca, data = imcd, colour = 'PatientID')
+pca.plot
+
+ggplot(imcd, aes(x=PatientID, y=GC_area), color=PatientID) +
+  geom_point()
+ggplot(imcd, aes(x=PatientID, y=Follicle_area), color=PatientID) +
+  geom_point()
+ggplot(imcd, aes(x=PatientID, y=MZ_width), color=PatientID) +
+  geom_point()
+ggplot(imcd, aes(x=PatientID, y=MZ_area), color=PatientID) +
+  geom_point()
+```
+
+
+```{r}
+#####
+#Assess Normality
+#Degree of regressed germinal centers in iMCD
+attach(by.pt.1)
+hist(log10(GC_area[Subtype.1%in%"iMCD"]))
+hist(log10(Follicle_area[Subtype.1%in%"iMCD"]))
+hist(log10(MZ_width[Subtype.1%in%"iMCD"]))
+hist(log10(MZ_area[Subtype.1%in%"iMCD"]))
+
+hist(log10(GC_area[Subtype.1%in%"Sentinel"]))
+hist(log10(Follicle_area[Subtype.1%in%"Sentinel"]))
+hist(log10(MZ_width[Subtype.1%in%"Sentinel"]))
+hist(log10(MZ_area[Subtype.1%in%"Sentinel"]))
+
+shapiro.test(log10(GC_area[Subtype.1%in%"Sentinel"]))
+shapiro.test(log10(Follicle_area[Subtype.1%in%"Sentinel"]))
+shapiro.test(log10(MZ_width[Subtype.1%in%"Sentinel"]))
+shapiro.test(log10(MZ_area[Subtype.1%in%"Sentinel"]))
+
+detach(by.pt.1)
+
+#take log10 of all of the features
+by.pt.2<-by.pt.1%>%
+  mutate(GC_area=log10(GC_area))%>%
+  mutate(Follicle_area=log10(Follicle_area))%>%
+  mutate(MZ_width=log10(MZ_width))%>%
+  mutate(MZ_area=log10(MZ_area))
+
+#Apply weighted mean
+attach(by.pt.2)
+x<-MZ_area[Subtype.1 %in% "Sentinel"]
+y<-MZ_area[Subtype.1 %in% "iMCD"]
+n1<-n[Subtype.1 %in% "Sentinel"]
+n2<-n[Subtype.1 %in% "iMCD"]
+wtd.t.test(x,y,weight=n1,weighty=n2,alternative="two.tailed",bootse=TRUE,samedata = FALSE)
+
+wtd.mean(GC_area[Subtype.1 %in% "iMCD"],weights=n[Subtype.1 %in% "iMCD"])
+wtd.mean(GC_area[Subtype.1 %in% "Sentinel"],weights=n[Subtype.1 %in% "Sentinel"])
+wtd.mean(GC_area[Subtype %in% "iMCD-TAFRO"],weights=n[Subtype %in% "iMCD-TAFRO"])
+wtd.mean(GC_area[Subtype %in% "iMCD-NOS"],weights=n[Subtype %in% "iMCD-NOS"])
+
+#Use linear regressions with weights: iMCD vs Sentinel
+summary(lm(GC_area~Subtype.1,data=by.pt.2,weights=1/n))
+summary(lm(Follicle_area~Subtype.1,data=by.pt.2,weight=1/n))
+summary(lm(MZ_width~Subtype.1,data=by.pt.2,weight=1/n))
+summary(lm(MZ_area~Subtype.1,data=by.pt.2,weights=1/n))
+
+
+by.pt.3<-by.pt.2%>%group_by(Subtype.1)%>%
+  summarise(gc=wtd.mean(GC_area,n),foll=wtd.mean(Follicle_area,n),mzw=wtd.mean(MZ_width,n),mza=wtd.mean(MZ_area,n),
+            gc.var=sqrt(wtd.var(GC_area,n)),foll.var=sqrt(wtd.var(Follicle_area,n)),mzw.var=sqrt(wtd.var(MZ_width,n)),
+            mza=sqrt(wtd.var(MZ_area,n)))%>%
+  mutate(n=c(20,8))
+```
+
+
+```{r}
+#Figures
+
+#Germinal centers
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+#Germinal centers
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone width
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone area
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle size
+p <- ggplot(by.pt.2, aes(x=Subtype.1, y=(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+#Use linear regressions with weights: Sentinel vs hyperplastic vs mixed vs plasmacytic
+histo<-by.pt.2%>%
+  mutate(Histopath=factor(Histopath,levels=c("NA","Hypervascular","Mixed","Plasmacytic")))
+
+summary(lm(GC_area~Histopath,data=histo,weights=1/n))
+summary(lm(Follicle_area~Histopath,data=histo,weight=1/n))
+summary(lm(MZ_width~Histopath,data=histo,weight=1/n))
+summary(lm(MZ_area~Histopath,data=histo,weights=1/n))
+
+
+#Germinal centers
+p <- ggplot(histo, aes(x=Histopath, y=(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone width
+p <- ggplot(histo, aes(x=Histopath, y=(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone area
+p <- ggplot(histo, aes(x=Histopath, y=(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle size
+p <- ggplot(histo, aes(x=Histopath, y=(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+#Use linear regressions with weights: Sentinel vs TAFRO vs NOS
+tafnos<-by.pt.2%>%
+  mutate(Subtype=factor(Subtype,levels=c("Sentinel","iMCD-TAFRO","iMCD-NOS")))
+
+summary(lm(GC_area~Subtype,data=tafnos,weights=1/n))
+summary(lm(Follicle_area~Subtype,data=tafnos,weight=1/n))
+summary(lm(MZ_width~Subtype,data=tafnos,weight=1/n))
+summary(lm(MZ_area~Subtype,data=tafnos,weights=1/n))
+
+#Germinal centers
+p <- ggplot(tafnos, aes(x=Subtype, y=(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=2,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone width
+p <- ggplot(tafnos, aes(x=Subtype, y=(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone area
+p <- ggplot(tafnos, aes(x=Subtype, y=(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle size
+p <- ggplot(tafnos, aes(x=Subtype, y=(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+
+p <- ggplot(tafnos)+
+  stat_summary(mapping=aes(x=Subtype, y=(Follicle_area)),fun.y="wtd.mean",geom="bar",na.rm=TRUE) +
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=.5,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+#iMCD VS SENTINEL
+#GC AREA
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (GC_area[Subtype.1%in%"Sentinel"]),
+  y = (GC_area[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features.1)
+# noevidence for unequal variance, use var.equal=FALSE for all groups
+t.test((GC_area)~Subtype.1,var.equal=TRUE,data=ln.features.1)
+
+#FOLLICLE AREA
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (Follicle_area[Subtype.1%in%"Sentinel"]),
+  y = (Follicle_area[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features)
+# Evidence for unequal variance, use var.equal=FALSE for all groups
+t.test((Follicle_area)~Subtype.1,var.equal=FALSE,data=ln.features.1)
+
+#MZ WIDTH
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (MZ_width[Subtype.1%in%"Sentinel"]),
+  y = (MZ_width[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features)
+# Evidence for unequal variance, use var.equal=FALSE for all groups
+t.test((MZ_width)~Subtype.1,var.equal=FALSE,data=ln.features.1)
+
+#MZ AREA
+##test for common variance
+attach(ln.features.1)
+var.test(
+  x = (MZ_area[Subtype.1%in%"Sentinel"]),
+  y = (MZ_area[Subtype.1%in%"iMCD"]),
+  ratio = 1,
+  alternative = "two.sided",
+  conf.level = 0.95
+)
+detach(ln.features.1)
+# Evidence for unequal variance, use var.equal=FALSE for all groups
+t.test((MZ_area)~Subtype.1,var.equal=FALSE,data=ln.features.1)
+```
+
+
+```{r}
+###Means and SDs
+gc.mean<-ln.features.1%>%
+  group_by(Subtype.1)%>%
+  summarise(mean=mean(GC_area,na.rm=TRUE),SD=sd(GC_area,na.rm=TRUE),
+            min=min(GC_area,na.rm=TRUE),max=max(GC_area,na.rm=TRUE))
+
+foll.mean<-ln.features%>%
+  group_by(Subtype.1)%>%
+  summarise(mean=mean(Follicle_area,na.rm=TRUE),SD=sd(Follicle_area,na.rm=TRUE),logmean=mean(log10(Follicle_area),na.rm=TRUE),logSD=sd(log10(Follicle_area),na.rm=TRUE),
+            min=min(Follicle_area,na.rm=TRUE),max=max(Follicle_area,na.rm=TRUE),logmin=min(log10(Follicle_area),na.rm=TRUE),logmax=max(log10(Follicle_area),na.rm=TRUE))
+
+mzw.mean<-ln.features%>%
+  group_by(Subtype.1)%>%
+  summarise(mean=mean(MZ_width,na.rm=TRUE),SD=sd(MZ_width,na.rm=TRUE),logmean=mean(log10(MZ_width),na.rm=TRUE),logSD=sd(log10(MZ_width),na.rm=TRUE),
+            min=min(MZ_width,na.rm=TRUE),max=max(MZ_width,na.rm=TRUE),logmin=min(log10(MZ_width),na.rm=TRUE),logmax=max(log10(MZ_width),na.rm=TRUE))
+
+mza.mean<-ln.features%>%
+  group_by(Subtype.1)%>%
+  summarise(mean=mean(MZ_area,na.rm=TRUE),SD=sd(MZ_area,na.rm=TRUE),logmean=mean(log10(MZ_area),na.rm=TRUE),logSD=sd(log10(MZ_area),na.rm=TRUE),
+            min=min(MZ_area,na.rm=TRUE),max=max(MZ_area,na.rm=TRUE),logmin=min(log10(MZ_area),na.rm=TRUE),logmax=max(log10(MZ_area),na.rm=TRUE))
+```
+
+
+```{r}
+#####
+#Figures
+figures<-left_join(ln.features,ln.area[,c(1,6:11)], by="PatientID")
+
+#Germinal centers
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone width
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Mantle zone area
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle size
+p <- ggplot(figures, aes(x=Subtype.1, y=log10(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+#GC AREA BY HISTOPATH
+aov<-aov(log10(GC_area)~Histopath,data=figures)
+summary(aov)
+
+figures.1<-figures%>%mutate(GC_area=log10(GC_area))%>%mutate(Follicle_area=log10(Follicle_area))%>%mutate(MZ_width=log10(MZ_width))%>%mutate(MZ_area=log10(MZ_area))
+pairwise.t.test(figures.1$GC_area, figures.1$Histopath, p.adjust.method = "BH")
+
+gc.mean<-figures%>%
+  group_by(Histopath)%>%
+  summarise(mean=mean(log10(GC_area),na.rm=TRUE),SD=sd(log10(GC_area),na.rm=TRUE),min=min(log10(GC_area)),max=max(log10(GC_area)))
+
+#By histopath subtype
+p <- ggplot(figures, aes(x=Histopath, y=log10(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle by histopath
+aov<-aov(log10(Follicle_area)~Histopath,data=figures)
+
+summary(aov)
+pairwise.t.test(figures.1$Follicle_area, figures.1$Histopath, p.adjust.method = "BH")
+
+foll.mean<-figures%>%
+  group_by(Histopath)%>%
+  summarise(mean=mean(log10(Follicle_area),na.rm=TRUE),SD=sd(log10(Follicle_area),na.rm=TRUE),min=min(log10(Follicle_area)),max=max(log10(Follicle_area)))
+
+#By histopath subtype
+p <- ggplot(figures, aes(x=Histopath, y=log10(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#MZ width by histopath
+aov<-aov(log10(MZ_width)~Histopath,data=figures)
+
+summary(aov)
+pairwise.t.test(figures.1$MZ_width, figures.1$Histopath, p.adjust.method = "BH")
+
+gc.mean<-figures%>%
+  group_by(Histopath)%>%
+  summarise(mean=mean(log10(MZ_width),na.rm=TRUE),SD=sd(log10(MZ_width),na.rm=TRUE),min=min(log10(MZ_width)),max=max(log10(MZ_width)))
+
+#By histopath subtype
+p <- ggplot(figures, aes(x=Histopath, y=log10(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#MZ area by histopath
+aov<-aov(log10(MZ_area)~Histopath,data=figures)
+
+summary(aov)
+pairwise.t.test(figures.1$MZ_area, figures.1$Histopath, p.adjust.method = "BH")
+
+gc.mean<-figures%>%
+  group_by(Histopath)%>%
+  summarise(mean=mean(log10(MZ_area),na.rm=TRUE),SD=sd(log10(MZ_area),na.rm=TRUE),min=min(log10(MZ_area)),max=max(log10(MZ_area)))
+
+#By histopath subtype
+p <- ggplot(figures, aes(x=Histopath, y=log10(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+#Sentinel vs hyperplastic vs mixed vs plasmacytic
+gc<-raw.stats(figures,Histopath,GC_area)
+gc
+foll<-raw.stats(figures,Histopath,Follicle_area)
+foll
+mz_width<-raw.stats(figures,Histopath,MZ_width)
+mz_width
+mz_area<-raw.stats(figures,Histopath,MZ_area)
+mz_area
+```
+
+
+
+```{r}
+#####By subtype
+#GC AREA
+aov<-aov(GC_area~Subtype,data=ln.features)
+summary(aov)
+pairwise.t.test(ln.features$GC_area, ln.features$Subtype, p.adjust.method = "BH")
+
+#Follicle AREA
+aov<-aov(Follicle_area~Subtype,data=ln.features)
+summary(aov)
+pairwise.t.test(ln.features$Follicle_area, ln.features$Subtype, p.adjust.method = "BH")
+
+#MZ width
+aov<-aov(MZ_width~Subtype,data=ln.features)
+summary(aov)
+pairwise.t.test(ln.features$MZ_width, ln.features$Subtype, p.adjust.method = "BH")
+
+#MZ AREA
+aov<-aov(MZ_area~Subtype,data=ln.features)
+summary(aov)
+pairwise.t.test(ln.features$MZ_area, ln.features$Subtype, p.adjust.method = "BH")
+
+#By subtype
+p <- ggplot(ln.features, aes(x=Subtype, y=log10(GC_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#Follicle AREA
+p <- ggplot(ln.features, aes(x=Subtype, y=log10(Follicle_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#MZ width
+p <- ggplot(ln.features, aes(x=Subtype, y=log10(MZ_width))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .01, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#MZ AREA
+p <- ggplot(ln.features, aes(x=Subtype, y=log10(MZ_area))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+
+```{r}
+my_comparisons <- list(c("iMCD-NOS", "Sentinel"), c("iMCD-TAFRO", "Sentinel"), c("iMCD-NOS", "iMCD-TAFRO"))
+```
+
+```{r}
+ggviolin(ln.features.1, x = "Subtype", y="MZ_area", fill = "Subtype", add = "boxplot", add.params = list(fill="white")) + stat_compare_means(comparisons = my_comparisons, label = "p.signif", label.y.npc = 'top', label.x.npc = 'center', method.args = list(var.equal = FALSE))
+```
+
+
+```{r}
+###Means and SDs
+gc.mean<-ln.features%>%
+  group_by(Subtype)%>%
+  summarise(mean=mean(log10(GC_area),na.rm=TRUE),SD=sd(log10(GC_area),na.rm=TRUE),min=min(log10(GC_area)),max=max(log10(GC_area)))
+
+foll.mean<-ln.features%>%
+  group_by(Subtype)%>%
+  summarise(mean=mean(log10(Follicle_area),na.rm=TRUE),SD=sd(log10(Follicle_area),na.rm=TRUE),min=min(log10(Follicle_area)),max=max(log10(Follicle_area)))
+
+mzw.mean<-ln.features%>%
+  group_by(Subtype)%>%
+  summarise(mean=mean(log10(MZ_width),na.rm=TRUE),SD=sd(log10(MZ_width),na.rm=TRUE),min=min(log10(MZ_width)),max=max(log10(MZ_width)))
+
+mza.mean<-ln.features%>%
+  group_by(Subtype)%>%
+  summarise(mean=mean(log10(MZ_area),na.rm=TRUE),SD=sd(log10(MZ_area),na.rm=TRUE),min=min(log10(MZ_area)),max=max(log10(MZ_area)))
+```
+
+
+```{r}
+#Sentinel vs TAFRO vs NOS
+gc<-raw.stats(ln.features,Subtype,GC_area)
+gc
+foll<-raw.stats(ln.features,Subtype,Follicle_area)
+foll
+mz_width<-raw.stats(ln.features,Subtype,MZ_width)
+mz_width
+mz_area<-raw.stats(ln.features,Subtype,MZ_area)
+mz_area
+```
+
+
+```{r}
+#####
+#Number of germinal centers per area
+
+n_gcs<-ln.features%>%
+  group_by(PatientID)%>%
+  summarise(n=n())
+
+#Merge with ln_area
+ln.area.1<-left_join(ln.area,n_gcs,by="PatientID")
+
+#Calculate gc per area
+ln.area.2<-ln.area.1%>%
+  mutate(gc_per=n/log10(positive))
+
+by.group<-ln.area.2%>%
+  group_by(Subtype)%>%
+  summarise(mean=mean(gc_per,na.rm=TRUE),SD=sd(gc_per,na.rm=TRUE),min=min(gc_per,na.rm=TRUE),max=max(gc_per,na.rm=TRUE))
+
+by.group<-ln.area.2%>%
+  group_by(Histopath)%>%
+  summarise(mean=mean(gc_per,na.rm=TRUE),SD=sd(gc_per,na.rm=TRUE),min=min(gc_per,na.rm=TRUE),max=max(gc_per,na.rm=TRUE))
+```
+
+
+```{r}
+#####By subtype
+#GC AREA
+aov<-aov(gc_per~Subtype,data=ln.area.2)
+summary(aov)
+pairwise.t.test(ln.area.2$gc_per, ln.area.2$Subtype, p.adjust.method = "BH")
+
+p <- ggplot(ln.area.2, aes(x=Subtype, y=(gc_per))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+
+#By histopath
+#GC AREA
+aov<-aov(gc_per~Histopath,data=ln.area.2)
+summary(aov)
+pairwise.t.test(ln.area.2$gc_per, ln.area.2$Histopath, p.adjust.method = "BH")
+
+p <- ggplot(ln.area.2, aes(x=Histopath, y=(gc_per))) + 
+  geom_boxplot()+ geom_dotplot(binaxis='y', stackdir='center', dotsize=1,binwidth = .02, color="red",alpha=.3)+
+  theme_classic()
+p
+```
+
+
+```{r}
+###########
+
+
+
+raw.stats<-function(df,y,x){
+  df%>%
+    group_by({{y}})%>%
+    summarise(med=median({{x}},na.rm=TRUE),iqr=IQR({{x}},na.rm=TRUE),
+              min=min({{x}},na.rm=TRUE),max=max({{x}},na.rm=TRUE))
+}
+
+#iMCD vs Sentinel
+gc<-raw.stats(by.pt.1,Subtype.1,GC_area)
+gc
+foll<-raw.stats(by.pt.1,Subtype.1,Follicle_area)
+foll
+mz_width<-raw.stats(by.pt.1,Subtype.1,MZ_width)
+mz_width
+mz_area<-raw.stats(by.pt.1,Subtype.1,MZ_area)
+mz_area
+
+```
+
+
+
