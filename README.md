@@ -2,7 +2,7 @@
 
 Quantitative measures of -- 
 
-Germinal Center area/n
+Germinal Center area\n
 Follicle Area
 Mantle zone width
 Mantle zone area
